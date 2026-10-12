@@ -654,6 +654,17 @@ class VKSDKManager {
         this.isInitialized = true;
         console.log('✅ [VK Bridge] Initialized successfully');
 
+        if (typeof this.vkBridge.subscribe === 'function') {
+          this.vkBridge.subscribe((e) => {
+            if (!e || !e.detail) return;
+            if (e.detail.type === 'VKWebAppViewHide') {
+              window.dispatchEvent(new CustomEvent('game-mute-toggle', { detail: { muted: true } }));
+            } else if (e.detail.type === 'VKWebAppViewRestore') {
+              window.dispatchEvent(new CustomEvent('game-mute-toggle', { detail: { muted: false } }));
+            }
+          });
+        }
+
         // Fetch user info from VK Bridge
         try {
           const user = await this._bridgeSend('VKWebAppGetUserInfo', {}, 2000);

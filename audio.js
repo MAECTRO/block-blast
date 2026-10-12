@@ -31,6 +31,23 @@ class SoundManager {
       }
     });
 
+    // VK Mini Apps Rule 2.2.5: Pause audio on VKWebAppViewHide and resume on VKWebAppViewRestore
+    if (typeof window !== 'undefined' && window.vkBridge && typeof window.vkBridge.subscribe === 'function') {
+      window.vkBridge.subscribe((e) => {
+        if (!e || !e.detail) return;
+        if (e.detail.type === 'VKWebAppViewHide') {
+          if (this.ctx && this.ctx.state === 'running') {
+            this.ctx.suspend().catch(() => {});
+          }
+        } else if (e.detail.type === 'VKWebAppViewRestore') {
+          const isAdShowing = (window.vkSDK && window.vkSDK.isAdShowing);
+          if (this.hasUserInteracted && this.ctx && this.ctx.state === 'suspended' && !this.isMuted && !isAdShowing) {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+      });
+    }
+
     // Listen for platform/SDK mute events
     window.addEventListener('game-mute-toggle', (e) => {
       if (e && e.detail && typeof e.detail.muted === 'boolean') {
