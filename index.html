@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Block Blast 3D: Мания Блоков</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧩</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Suppress expected postMessage rejection when running outside platform iframe in local dev
+    window.addEventListener('unhandledrejection', function(event) {
+      if (event && event.reason) {
+        var msg = event.reason.message || String(event.reason);
+        if (msg.indexOf('No parent to post message') !== -1 || msg.indexOf('Can not get appId') !== -1) {
+          event.preventDefault();
+        }
+      }
+    });
+    window.addEventListener('error', function(e) {
+      if (e && e.message && (e.message.indexOf('No parent to post message') !== -1 || e.message.indexOf('Can not get appId') !== -1)) {
+        e.preventDefault();
+        return true;
+      }
+    });
+  </script>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0b0f19">
+  <!-- VK Bridge SDK (VK Play / VK Mini Apps / VK Games) -->
+  <script src="vk-bridge.min.js"></script>
+  <script>
+    if (!window.vkBridge) {
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js';
+      document.head.appendChild(s);
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- Header HUD -->
+    <header class="hud">
+      <div class="score-card current-score-card" id="card-current-score">
+        <span class="score-label" id="lbl-score">SCORE</span>
+        <span class="score-value" id="score">0</span>
+      </div>
+
+      <div class="coin-card">
+        <span class="coin-icon">🪙</span>
+        <span class="coin-value" id="coins-val">0</span>
+      </div>
+      
+      <div class="title-logo">
+        <h1>BLOCK BLAST <span class="highlight">3D</span> <small class="version-tag">v1.0.0</small></h1>
+        <!-- Animated Mascot & Rank Badge -->
+        <div class="mascot-container">
+          <div id="mascot-emote" class="mascot-emote" title="Mascot">🤖</div>
+          <span id="rank-badge" class="rank-badge">🥉 Bronze</span>
+        </div>
+      </div>
+
+      <div class="score-card best-score-card" id="card-best-score">
+        <span class="score-label" id="lbl-best">BEST</span>
+        <span class="score-value" id="best-score">0</span>
+      </div>
+
+      <button id="btn-pause-game" class="icon-btn pause-btn" title="Pause">
+        <span class="icon">⏸️</span>
+      </button>
+    </header>
+
+    <!-- Game Mode Selector Bar -->
+    <div class="mode-bar">
+      <button class="mode-btn active" data-mode="classic" id="btn-mode-classic">Classic</button>
+      <button class="mode-btn" data-mode="levels" id="btn-mode-levels">⭐ Levels</button>
+      <button class="mode-btn" data-mode="duel" id="btn-mode-duel">⚔️ Bot Duel</button>
+      <button class="mode-btn" data-mode="bomb" id="btn-mode-bomb">💣 Bombs</button>
+      <button class="mode-btn" data-mode="time" id="btn-mode-time">⏱️ Time Attack</button>
+    </div>
+
+    <!-- Difficulty Selector Bar -->
+    <div class="difficulty-bar">
+      <button class="diff-btn" data-diff="easy" id="btn-diff-easy">🟢 Easy</button>
+      <button class="diff-btn active" data-diff="normal" id="btn-diff-normal">🟡 Normal</button>
+      <button class="diff-btn" data-diff="hard" id="btn-diff-hard">🔴 Hard (9x9)</button>
+    </div>
+
+    <!-- Level Goal Banner (Visible when in Levels Mode) -->
+    <div id="level-goal-bar" class="level-goal-bar hidden">
+      <span id="level-goal-txt">Level 1: Score 300 points</span>
+    </div>
+
+    <!-- Bot Status Bar (Visible when in Duel Mode) -->
+    <div id="bot-status-bar" class="bot-status-bar hidden">
+      <span id="bot-status-txt">⚔️ AI Bot: Opponent is active!</span>
+      <div class="bot-hp-bar"><div id="bot-hp-fill" class="bot-hp-fill" style="width: 100%;"></div></div>
+    </div>
+
+    <!-- Timer Bar for Time Attack Mode -->
+    <div id="timer-bar-container" class="timer-bar-container hidden">
+      <div class="timer-header">
+        <span class="timer-icon">⏱️</span>
+        <span id="timer-text" class="timer-text">02:00</span>
+        <span id="timer-bonus-badge" class="timer-bonus-badge hidden">+10s</span>
+      </div>
+      <div class="timer-progress-track">
+        <div id="timer-bar-fill" class="timer-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- Controls Bar & Ultimate Ability Button -->
+    <div class="controls-bar">
+      <button id="btn-sound" class="icon-btn" title="Sound">
+        <span class="icon" id="sound-icon">🔊</span>
+      </button>
+      <button id="btn-settings" class="icon-btn highlight-btn" title="Pause & Settings">
+        <span class="icon">⚙️</span>
+      </button>
+      <button id="btn-ultimate" class="icon-btn ultimate-btn" title="⚡ Rainbow Lightning">
+        <span class="icon">⚡</span>
+        <div id="ultimate-fill" class="ultimate-fill" style="height: 0%;"></div>
+      </button>
+      <button id="btn-trophies" class="icon-btn highlight-btn" title="Hall of Fame">
+        <span class="icon">🏆</span>
+      </button>
+      <button id="btn-daily-calendar" class="icon-btn highlight-btn" title="Daily Rewards">
+        <span class="icon">🎁</span>
+      </button>
+      <button id="btn-levels-modal" class="icon-btn highlight-btn" title="Level Map">
+        <span class="icon">🗺️</span>
+      </button>
+      <button id="btn-quests" class="icon-btn highlight-btn" title="Daily Quests">
+        <span class="icon">📋</span>
+      </button>
+      <button id="btn-shop" class="icon-btn" title="Shop">
+        <span class="icon">🎨</span>
+      </button>
+      <button id="btn-scratch" class="icon-btn highlight-btn" title="Scratch Lottery">
+        <span class="icon">🎟️</span>
+        <span id="scratch-ticket-badge" class="ticket-badge hidden">0</span>
+      </button>
+      <button id="btn-wheel" class="icon-btn highlight-btn" title="Lucky Wheel">
+        <span class="icon">🎡</span>
+      </button>
+      <button id="btn-leaderboard" class="icon-btn" title="Leaderboard">
+        <span class="icon">📊</span>
+      </button>
+      <button id="btn-restart" class="icon-btn" title="Restart">
+        <span class="icon">🔄</span>
+      </button>
+      <button id="btn-shortcut" class="icon-btn hidden" title="Add to Desktop">
+        <span class="icon">📲</span>
+      </button>
+    </div>
+
+    <!-- Power-Up Boosters Bar -->
+    <div class="boosters-bar">
+      <button id="booster-undo" class="booster-btn" title="Undo Move">
+        <span class="booster-icon">↩️</span>
+        <span class="booster-count" id="count-undo">2</span>
+      </button>
+      <button id="booster-hammer" class="booster-btn" title="Hammer">
+        <span class="booster-icon">🔨</span>
+        <span class="booster-count" id="count-hammer">1</span>
+      </button>
+      <button id="booster-bomb" class="booster-btn" title="Bomb 3x3">
+        <span class="booster-icon">💣</span>
+        <span class="booster-count" id="count-bomb">1</span>
+      </button>
+      <button id="booster-shuffle" class="booster-btn" title="Shuffle">
+        <span class="booster-icon">🔄</span>
+        <span class="booster-count" id="count-shuffle">1</span>
+      </button>
+    </div>
+
+    <!-- Main Content Layout -->
+    <main class="main-layout">
+      <!-- Hold Side Panel -->
+      <aside class="hold-panel">
+        <span class="hold-title" id="lbl-hold">HOLD</span>
+        <div id="hold-slot" class="hold-slot">
+          <span class="hold-hint" id="lbl-hold-hint">Empty</span>
+        </div>
+      </aside>
+
+      <!-- Center Game Canvas Container -->
+      <section class="game-container">
+        <!-- Dynamic Combo Multiplier Tag -->
+        <div id="combo-multiplier-tag" class="combo-multiplier-tag hidden">COMBO x2 🔥</div>
+
+        <!-- Combo / Streak Banner Popup -->
+        <div id="combo-banner" class="combo-banner"></div>
+        
+        <!-- Big No Moves Alert Overlay with Direct Restart Button -->
+        <div id="no-moves-banner" class="no-moves-banner hidden">
+          <div class="no-moves-content">
+            <span id="no-moves-title">⚠️ NO MOVES!</span>
+            <button id="btn-quick-restart" class="btn btn-primary btn-sm" style="margin-top:10px;">
+              <span id="btn-quick-restart-txt">🔄 Play Again</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Canvas for Grid, Pieces & Particles -->
+        <div class="canvas-wrapper">
+          <canvas id="game-canvas"></canvas>
+        </div>
+      </section>
+
+      <!-- Symmetrical Right Spacer to keep canvas perfectly centered on Desktop -->
+      <div class="hold-spacer"></div>
+    </main>
+
+    <!-- Bottom Tray for 3 Shapes -->
+    <footer class="shapes-tray-container">
+      <div class="shapes-tray" id="shapes-tray">
+        <div class="shape-slot" id="slot-0"></div>
+        <div class="shape-slot" id="slot-1"></div>
+        <div class="shape-slot" id="slot-2"></div>
+      </div>
+    </footer>
+
+    <!-- Pre-Ad Countdown Overlay -->
+    <div id="ad-countdown-overlay" class="ad-overlay hidden">
+      <div class="ad-card glass-card">
+        <h3 id="ad-title">Ad starts in</h3>
+        <div class="countdown-timer" id="ad-timer">3</div>
+      </div>
+    </div>
+
+    <!-- Scratch Card Win Modal -->
+    <div id="modal-scratch" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="scratch-title">🎟️ Scratch Lottery!</h2>
+          <button class="close-btn" id="btn-close-scratch">&times;</button>
+        </div>
+        <p id="scratch-hint-txt" style="font-size:0.85rem; color:#8d9bb0; margin-bottom:12px;">Scratch the silver foil with your finger or mouse!</p>
+        <div class="scratch-container">
+          <div class="scratch-prize" id="scratch-prize-txt">🪙 500 COINS!</div>
+          <canvas id="scratch-canvas" width="260" height="130"></canvas>
+        </div>
+        <button id="btn-claim-scratch" class="btn btn-primary hidden" style="margin-top:14px;">
+          <span id="btn-claim-scratch-txt">✨ Claim Reward!</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Trophy Room Modal -->
+    <div id="modal-trophies" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="trophies-title">🏆 Hall of Fame</h2>
+          <button class="close-btn" id="btn-close-trophies">&times;</button>
+        </div>
+        <div class="trophies-grid" id="trophies-grid">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Login Calendar Modal -->
+    <div id="modal-daily-reward" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="calendar-title">🎁 7-Day Rewards</h2>
+          <button class="close-btn" id="btn-close-daily">&times;</button>
+        </div>
+        <div class="daily-calendar-grid" id="daily-calendar-grid">
+          <!-- 7 Days populated via JS -->
+        </div>
+        <button id="btn-claim-daily" class="btn btn-primary" style="margin-top:15px;">
+          <span id="btn-claim-daily-txt">🎁 Claim Reward!</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Levels Selector Modal (500 Levels Saga Map) -->
+    <div id="modal-levels" class="modal hidden">
+      <div class="modal-content glass-card levels-modal-content">
+        <!-- Header with Title, Total Stars, Close button -->
+        <div class="modal-header levels-header">
+          <div class="levels-title-wrap">
+            <h2 id="levels-title">⭐ Карта Уровней (500)</h2>
+            <div class="total-stars-pill" id="total-stars-display" title="Total Stars">
+              <span class="star-icon">⭐</span>
+              <span id="total-stars-val">0 / 1500</span>
+            </div>
+          </div>
+          <button class="close-btn" id="btn-close-levels">&times;</button>
+        </div>
+
+        <!-- Chapter Selector / Navigator Bar -->
+        <div class="chapter-nav-bar">
+          <button class="btn btn-secondary chapter-nav-btn" id="btn-chapter-prev">◀</button>
+          <div class="chapter-info-badge" id="chapter-info-badge">
+            <span class="chapter-icon" id="chapter-icon">🌟</span>
+            <strong id="chapter-title-txt">Глава 1: Неоновый Старт</strong>
+            <small id="chapter-range-txt">(Уровни 1–20) • ⭐ 0/60</small>
+          </div>
+          <button class="btn btn-secondary chapter-nav-btn" id="btn-chapter-next">▶</button>
+        </div>
+
+        <!-- Quick Jump to Current Active Level -->
+        <div class="levels-quick-jump">
+          <button class="btn btn-secondary quick-jump-btn" id="btn-jump-current-level">
+            <span id="btn-jump-txt">📍 К текущему уровню</span>
+          </button>
+        </div>
+
+        <!-- 20 Levels Grid for Current Chapter -->
+        <div class="levels-grid" id="levels-grid">
+          <!-- Populated via JS -->
+        </div>
+
+        <!-- Selected Level Briefing Card / Play Action -->
+        <div class="level-briefing-card hidden" id="level-briefing-card">
+          <div class="briefing-info">
+            <h3 id="briefing-lvl-title">🌟 Уровень 1</h3>
+            <p id="briefing-goal-txt">🎯 Цель: Набрать 350 очков</p>
+            <div class="briefing-meta">
+              <span id="briefing-moves-txt">👣 Ходы: 25</span>
+              <span id="briefing-reward-txt">🪙 Награда: +50</span>
+            </div>
+          </div>
+          <button class="btn btn-primary briefing-play-btn" id="btn-start-selected-level">
+            <span id="btn-start-lvl-txt">▶️ НАЧАТЬ</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quests / Achievements Modal -->
+    <div id="modal-quests" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="quests-title">Daily Quests</h2>
+          <button class="close-btn" id="btn-close-quests">&times;</button>
+        </div>
+        <div class="quests-list" id="quests-list">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Shop Modal (Blocks & Backgrounds) -->
+    <div id="modal-shop" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="shop-title">Skins & Themes Shop</h2>
+          <button class="close-btn" id="btn-close-shop">&times;</button>
+        </div>
+        <div class="shop-tabs">
+          <button class="shop-tab active" id="tab-blocks">🎨 Block Themes</button>
+          <button class="shop-tab" id="tab-backgrounds">🌌 Backgrounds</button>
+        </div>
+        <div class="shop-themes-grid" id="shop-themes-grid">
+          <!-- Theme Items Populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Lucky Wheel Modal -->
+    <div id="modal-wheel" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="wheel-title">Lucky Wheel</h2>
+          <button class="close-btn" id="btn-close-wheel">&times;</button>
+        </div>
+        <div class="wheel-container">
+          <div class="wheel-pointer">▼</div>
+          <canvas id="wheel-canvas" width="260" height="260"></canvas>
+        </div>
+        <button id="btn-spin-wheel" class="btn btn-primary" style="margin-top: 15px;">
+          <span>🎰 <span id="btn-spin-txt">Spin (Free)</span></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="modal-gameover" class="modal hidden">
+      <div class="modal-content glass-card">
+        <h2 id="go-title" class="pulse-text">GAME OVER</h2>
+        <div class="final-scores">
+          <div class="final-score-item">
+            <span id="go-score-lbl">Your Score</span>
+            <strong id="final-score">0</strong>
+          </div>
+          <div class="final-score-item">
+            <span id="go-best-lbl">Record</span>
+            <strong id="final-best">0</strong>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <!-- Rewarded Video Button for Revive -->
+          <button id="btn-revive" class="btn btn-rewarded">
+            <span class="btn-icon">🎬</span>
+            <div class="btn-text">
+              <span id="btn-revive-title">Continue!</span>
+              <small id="btn-revive-sub">Clear 3 lines (Watch Ad)</small>
+            </div>
+          </button>
+
+          <button id="btn-modal-restart" class="btn btn-primary">
+            <span id="btn-restart-txt">Play Again</span>
+          </button>
+
+          <button id="btn-rate-game" class="btn btn-secondary hidden">
+            <span>⭐ <span id="btn-rate-txt">Rate Game</span></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard Modal -->
+    <div id="modal-leaderboard" class="modal hidden">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2 id="lb-title">Leaderboard</h2>
+          <button class="close-btn" id="btn-close-lb">&times;</button>
+        </div>
+        <div class="leaderboard-list" id="leaderboard-list">
+          <div class="loading-spinner" id="lb-loading-txt">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings & Pause Modal -->
+    <div id="modal-settings" class="modal hidden">
+      <div class="modal-content glass-card settings-modal-content">
+        <div class="modal-header">
+          <h2 id="settings-title">⚙️ Settings & Pause</h2>
+          <button class="close-btn" id="btn-close-settings">&times;</button>
+        </div>
+
+        <div class="settings-body">
+          <!-- Language Selector -->
+          <div class="settings-group">
+            <span class="settings-label" id="lbl-settings-lang">Game Language</span>
+            <div class="lang-selector">
+              <button class="lang-btn" data-lang="ru" id="lang-btn-ru">🇷🇺 Русский</button>
+              <button class="lang-btn" data-lang="en" id="lang-btn-en">🇬🇧 English</button>
+              <button class="lang-btn" data-lang="tr" id="lang-btn-tr">🇹🇷 Türkçe</button>
+            </div>
+          </div>
+
+          <!-- Sound Toggle -->
+          <div class="settings-group">
+            <span class="settings-label" id="lbl-settings-sound">Sound Effects</span>
+            <button class="btn btn-secondary" id="btn-settings-sound-toggle" style="min-width: 160px;">
+              <span id="settings-sound-status">🔊 Sound: ON</span>
+            </button>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="settings-actions">
+            <button id="btn-resume-game" class="btn btn-primary" style="width: 100%;">
+              <span id="btn-resume-txt">▶️ Resume</span>
+            </button>
+            <button id="btn-settings-restart" class="btn btn-secondary" style="width: 100%;">
+              <span id="btn-settings-restart-txt">🔄 Restart Game</span>
+            </button>
+            <button id="btn-pause-home" class="btn btn-secondary" style="width: 100%;">
+              <span id="btn-pause-home-txt">🏠 Main Menu</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Menu Screen (Home) -->
+    <div id="screen-main-menu" class="main-menu-overlay">
+      <div class="menu-content glass-card">
+        <!-- Logo & Subtitle -->
+        <div class="menu-logo-wrap">
+          <div class="menu-mascot-big">🤖</div>
+          <h1 class="menu-title">BLOCK BLAST <span class="accent-text">3D</span></h1>
+          <div class="menu-title-badge" id="menu-title-badge">МАНИЯ БЛОКОВ</div>
+          <p class="menu-subtitle" id="menu-sub-txt">🧩 Blast Blocks • Set Records!</p>
+        </div>
+
+        <!-- High Score & Coins Card -->
+        <div class="menu-stats-card">
+          <div class="menu-stat">
+            <span class="menu-stat-label" id="lbl-menu-best">🏆 BEST SCORE</span>
+            <span class="menu-stat-val" id="menu-best-score">0</span>
+          </div>
+          <div class="menu-stat-divider"></div>
+          <div class="menu-stat">
+            <span class="menu-stat-label" id="lbl-menu-coins">🪙 COINS</span>
+            <span class="menu-stat-val" id="menu-coins-val">100</span>
+          </div>
+        </div>
+
+        <!-- Big Shiny Play Button -->
+        <button id="btn-menu-play" class="btn btn-primary menu-play-btn">
+          <span id="btn-menu-play-txt">▶️ PLAY GAME</span>
+        </button>
+
+        <!-- Mode Select Quick Cards -->
+        <div class="menu-modes-section">
+          <span class="menu-section-label" id="lbl-menu-modes">SELECT GAME MODE</span>
+          <div class="menu-modes-grid">
+            <button class="menu-mode-card active" data-mode="classic" id="menu-card-classic">
+              <span class="mode-icon">💎</span>
+              <span id="menu-txt-classic">Classic</span>
+            </button>
+            <button class="menu-mode-card" data-mode="levels" id="menu-card-levels">
+              <span class="mode-icon">⭐</span>
+              <span id="menu-txt-levels">Levels</span>
+            </button>
+            <button class="menu-mode-card" data-mode="duel" id="menu-card-duel">
+              <span class="mode-icon">⚔️</span>
+              <span id="menu-txt-duel">Duel</span>
+            </button>
+            <button class="menu-mode-card" data-mode="bomb" id="menu-card-bomb">
+              <span class="mode-icon">💣</span>
+              <span id="menu-txt-bomb">Bombs</span>
+            </button>
+            <button class="menu-mode-card" data-mode="time" id="menu-card-time">
+              <span class="mode-icon">⏱️</span>
+              <span id="menu-txt-time">Blitz</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menu Bottom Nav -->
+        <div class="menu-nav-bar">
+          <button id="btn-menu-settings" class="icon-btn highlight-btn" title="Settings">
+            <span class="icon">⚙️</span>
+          </button>
+          <button id="btn-menu-leaderboard" class="icon-btn highlight-btn" title="Leaderboard">
+            <span class="icon">🏆</span>
+          </button>
+          <button id="btn-menu-shop" class="icon-btn highlight-btn" title="Shop">
+            <span class="icon">🎨</span>
+          </button>
+          <button id="btn-menu-rewards" class="icon-btn highlight-btn" title="Daily Rewards">
+            <span class="icon">🎁</span>
+          </button>
+          <button id="btn-menu-quests" class="icon-btn highlight-btn" title="Quests">
+            <span class="icon">📋</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Rotate Screen Prompt (Shown only on smartphones held in landscape) -->
+    <div id="rotate-device-prompt" class="rotate-device-overlay">
+      <div class="rotate-phone-card glass-card">
+        <div class="rotate-phone-anim">📱 🔄</div>
+        <h3 id="rotate-title">Поверните экран</h3>
+        <p id="rotate-sub">Для комфортной игры переверните телефон вертикально</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="audio.js"></script>
+  <script src="vk-sdk.js"></script>
+  <script src="shapes.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
